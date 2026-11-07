@@ -28,6 +28,8 @@ const text = (p: any) => {
     out = { action: "post", replyTo: "", content: "I would buy it", likes: ["post_launch"], stance: "yes", sentiment: 0.5, thought: "liked it" };
   } else if (t.includes("Write the report")) {
     out = { verdict: "ok", intentScore: 140, summary: "s", segments: [{ name: "A", reaction: "r", buyRate: 50 }], objections: [], praise: [], holes: [], recommendations: [], mindChanges: [] };
+  } else if (t.includes("A researcher asks you")) {
+    out = { answer: "About $5." };
   } else throw new Error("unexpected prompt: " + t.slice(0, 80));
   return { stop_reason: "end_turn", parsed_output: out, model: "claude-opus-5-5", usage: { input_tokens: 100, output_tokens: 10 } };
 };
@@ -72,4 +74,16 @@ test("stop before discussion: errors without a report", async () => {
   assert.equal(sim.stage, "error");
   assert.equal(sim.error, "Stopped by you.");
   assert.equal(sim.report, null);
+});
+
+test("pollCrowd asks everyone and stores the poll", async () => {
+  const { pollCrowd } = await import("../src/engine.ts");
+  onTurn = () => {};
+  const sim = newSim();
+  await runSimulation(sim, input, () => {}, new AbortController().signal);
+  const before = sim.usage!.calls;
+  const poll = await pollCrowd(sim, "What would you pay?");
+  assert.equal(poll.answers.length, 5);
+  assert.equal(sim.polls!.length, 1);
+  assert.equal(sim.usage!.calls, before + 5);
 });

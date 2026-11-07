@@ -66,6 +66,13 @@ export interface Usage {
   costUsd: number | null;
 }
 
+export interface Poll {
+  id: string;
+  question: string;
+  createdAt: string;
+  answers: { personaId: string; answer: string }[];
+}
+
 export interface SimInput {
   idea: string;
   audience: string;
@@ -87,6 +94,7 @@ export interface Simulation {
   report: Report | null;
   error: string | null;
   usage?: Usage; // absent on runs saved before usage tracking
+  polls?: Poll[];
 }
 
 export type SimEvent =

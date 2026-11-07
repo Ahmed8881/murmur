@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type Anthropic from "@anthropic-ai/sdk";
 import { ask, chat, type RunCtx } from "./claude.ts";
-import type { Brief, Persona, Post, Report, SimEvent, SimInput, Simulation } from "./types.ts";
+import type { Brief, Persona, Poll, Post, Report, SimEvent, SimInput, Simulation } from "./types.ts";
 import { allocate, chunk, clamp, countStances, emptyUsage, mapLimit, newId } from "./util.ts";
 
 const CONCURRENCY = 6; // parallel Claude calls; also the size of each "wave" within a round
@@ -234,6 +234,37 @@ export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: 
     emit({ type: "error", error: sim.error });
     stage("error");
   }
+}
+
+const PollAnswerZ = z.object({ answer: z.string().describe("Your honest answer in 1-2 sentences, in your own voice") });
+
+/** Ask every persona the same question after the run. People who fail to answer are left out. */
+export async function pollCrowd(sim: Simulation, question: string): Promise<Poll> {
+  sim.usage ??= emptyUsage();
+  const ctx: RunCtx = { usage: sim.usage };
+  const answers = await mapLimit(sim.personas, CONCURRENCY, async (p) => {
+    try {
+      const { answer } = await ask({
+        system: `${WORLD}\n\n${personaText(p)}`,
+        content: `${briefText(sim.brief!)}
+
+You discussed this product online. Your answer to "would you buy it?" ended as "${p.stance}". Your notes: ${p.memory.join(" | ") || "(none)"}
+
+A researcher asks you: "${question}"
+Answer in character.`,
+        schema: PollAnswerZ,
+        ctx,
+      });
+      return { personaId: p.id, answer: answer.trim() };
+    } catch (err) {
+      console.warn(`[murmur] ${p.name} skipped the poll:`, (err as Error).message);
+      return null;
+    }
+  });
+  const poll: Poll = { id: newId("poll"), question, createdAt: new Date().toISOString(), answers: answers.filter((a) => a !== null) };
+  if (!poll.answers.length) throw new Error("Nobody could answer. Check your API key and try again.");
+  (sim.polls ??= []).push(poll);
+  return poll;
 }
 
 export async function interview(sim: Simulation, persona: Persona, messages: { role: "user" | "assistant"; content: string }[]) {

@@ -262,6 +262,20 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .seg .pct { font: 12px var(--mono); text-align: right; }
 .report-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* Ask the crowd */
+.poll-form { padding: 18px; display: grid; gap: 12px; margin-bottom: 18px; }
+.poll-row { display: flex; gap: 8px; }
+.poll-form .hint { margin: 0; }
+.polls { display: grid; gap: 18px; }
+.poll { padding: 18px; }
+.poll h3 { font: 400 22px/1.2 var(--serif); margin-bottom: 14px; }
+.poll-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.poll-col h4 { margin: 0 0 10px; }
+.poll-col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.poll-col li { display: flex; gap: 8px; font-size: 13.5px; align-items: flex-start; }
+.poll-col li .avatar { width: 26px; height: 26px; font-size: 10px; }
+@media (max-width: 900px) { .poll-cols { grid-template-columns: 1fr; } }
+
 /* Drawer */
 .scrim { position: fixed; inset: 0; background: rgb(10 10 12 / 0.35); z-index: 20; animation: fade 0.2s ease; }
 @keyframes fade { from { opacity: 0; } }
