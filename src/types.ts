@@ -79,6 +79,8 @@ export interface SimInput {
   personaCount: number;
   rounds: number;
   deck?: { name: string; data: string } | null; // base64 PDF
+  /** Reuse these people instead of generating new ones (variant runs). */
+  crowd?: Persona[] | null;
 }
 
 export interface Simulation {
@@ -86,7 +88,7 @@ export interface Simulation {
   createdAt: string;
   stage: Stage;
   round: number;
-  input: Omit<SimInput, "deck"> & { deckName: string | null };
+  input: Omit<SimInput, "deck" | "crowd"> & { deckName: string | null; parentId?: string | null };
   brief: Brief | null;
   personas: Persona[];
   posts: Post[];

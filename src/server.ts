@@ -51,6 +51,7 @@ const CreateZ = z
       .object({ name: z.string().max(200), data: z.string().max(34_000_000).regex(/^[A-Za-z0-9+/=]+$/) })
       .nullable()
       .default(null),
+    parentId: z.string().max(40).nullable().default(null),
   })
   .refine((v) => v.idea.length >= 20 || v.deck, { message: "Describe your idea in at least 20 characters or attach a PDF deck." });
 
@@ -72,7 +73,7 @@ app.get("/api/simulations", (_req, res) => {
   res.json(
     [...sims.values()]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map((s) => ({ id: s.id, createdAt: s.createdAt, stage: s.stage, title: s.brief?.title ?? s.input.idea.slice(0, 60), people: s.personas.length, score: s.report?.intentScore ?? null, costUsd: s.usage?.costUsd ?? null })),
+      .map((s) => ({ id: s.id, createdAt: s.createdAt, stage: s.stage, title: s.brief?.title ?? s.input.idea.slice(0, 60), people: s.personas.length, score: s.report?.intentScore ?? null, costUsd: s.usage?.costUsd ?? null, parentId: s.input.parentId ?? null })),
   );
 });
 
@@ -81,6 +82,11 @@ app.post("/api/simulations", (req, res) => {
   if (!parsed.success) return bad(res, 400, parsed.error.issues[0].message);
   if ([...sims.values()].filter((s) => !["done", "error"].includes(s.stage)).length >= MAX_RUNNING)
     return bad(res, 429, `Only ${MAX_RUNNING} simulations can run at once. Wait for one to finish.`);
+
+  const parent = parsed.data.parentId ? sims.get(parsed.data.parentId) : null;
+  if (parsed.data.parentId && (!parent?.personas.length || !["done", "error"].includes(parent.stage)))
+    return bad(res, 400, "The original simulation isn't available or hasn't finished.");
+  if (parent) parsed.data.personaCount = parent.personas.length;
 
   const { deck, ...rest } = parsed.data;
   const sim: Simulation = {
@@ -106,7 +112,7 @@ app.post("/api/simulations", (req, res) => {
   };
   const ctrl = new AbortController();
   running.set(sim.id, ctrl);
-  runSimulation(sim, parsed.data, emit, ctrl.signal);
+  runSimulation(sim, { ...parsed.data, crowd: parent?.personas }, emit, ctrl.signal);
   res.status(201).json({ id: sim.id });
 });
 

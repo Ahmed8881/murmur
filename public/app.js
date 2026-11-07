@@ -62,12 +62,14 @@ window.addEventListener("hashchange", route);
 /* ---------------- Compose ---------------- */
 
 let deck = null;
+let variantOf = null; // { id, title, people, idea, audience } when rerunning on an existing crowd
 
 function updateEstimate() {
   const n = +$("count").value, r = +$("rounds").value;
   $("count-out").value = n;
   $("rounds-out").value = r;
-  $("estimate").textContent = `≈ ${1 + Math.ceil(n / 8) + n * r + 1}`;
+  // brief + (persona batches | one first-impressions call for a reused crowd) + turns + report
+  $("estimate").textContent = `≈ ${1 + (variantOf ? 1 : Math.ceil(n / 8)) + n * r + 1}`;
 }
 $("count").addEventListener("input", updateEstimate);
 $("rounds").addEventListener("input", updateEstimate);
@@ -124,8 +126,10 @@ $("new-form").addEventListener("submit", async (e) => {
       personaCount: +$("count").value,
       rounds: +$("rounds").value,
       deck,
+      parentId: variantOf?.id ?? null,
     });
     clearDeck();
+    setVariant(null);
     location.hash = `#/sim/${id}`;
   } catch (err) {
     showFormError(err.message);
@@ -143,7 +147,7 @@ async function loadHistory() {
       ...(sims.length
         ? sims.map((s) =>
             h("li", {}, h("a", { href: `#/sim/${s.id}` },
-              h("span", {}, s.title || "Untitled"),
+              h("span", {}, s.parentId ? "↳ " : "", s.title || "Untitled", s.parentId ? h("span", { class: "freq" }, "variant") : null),
               h("span", { class: "meta" }, `${s.people} people · ${s.score != null ? `${s.score}/100` : s.stage}${s.costUsd != null ? ` · ${fmtUsd(s.costUsd)}` : ""} · ${new Date(s.createdAt).toLocaleDateString()}`))))
         : [h("li", { class: "history-empty" }, "Nothing yet. Your simulations will show up here.")]),
     );
@@ -200,6 +204,7 @@ function render() {
     : s.stage === "error" ? "Simulation stopped"
     : s.stage === "simulating" ? `Round ${s.round} of ${s.input.rounds}`
     : "Simulation running";
+  if (s.input.parentId) $("sim-eyebrow").textContent += " · variant";
   $("sim-error").hidden = !s.error;
   $("sim-error").textContent = s.error ? `Something went wrong: ${s.error}` : "";
 
@@ -354,6 +359,7 @@ function renderReport() {
         h("div", {}, h("b", {}, r.intentScore), h("small", {}, "intent / 100"))),
       h("div", {}, h("h2", {}, r.verdict), h("p", {}, r.summary),
         h("p", { class: "muted" }, `${c.yes} would buy · ${c.maybe} maybe · ${c.no} wouldn't`))),
+    state.input.parentId ? h("section", { id: "compare", class: "card compare" }, h("p", { class: "muted" }, "Loading the comparison…")) : null,
     h("div", { class: "r-grid" },
       h("section", { class: "card r-card" }, h("h3", { class: "section-title" }, "Why they'd pass"), quotes(r.objections)),
       h("section", { class: "card r-card" }, h("h3", { class: "section-title" }, "What landed"), quotes(r.praise))),
@@ -369,9 +375,64 @@ function renderReport() {
       h("ul", {}, r.mindChanges.map((m) => h("li", {}, h("b", {}, m.name), ` ${STANCE_LABEL[m.from]} → ${STANCE_LABEL[m.to]}. `, m.why)))) : null,
     h("div", { class: "report-actions" },
       h("button", { class: "btn primary", onclick: () => openInterview(state.personas.find((p) => p.stance === "no")?.id || state.personas[0].id) }, "Interview a skeptic"),
+      h("button", { class: "btn ghost", onclick: startVariant, title: "Change the idea or price and rerun it on these same people" }, "Test a variant on this crowd"),
       h("button", { class: "btn ghost", onclick: download }, "Download JSON"),
       h("a", { class: "btn ghost", href: "#/" }, "New simulation")),
   ));
+  if (state.input.parentId) loadCompare();
+}
+
+const share = (sim, k) => (sim.personas.length ? Math.round((sim.personas.filter((p) => p.stance === k).length / sim.personas.length) * 100) : 0);
+
+async function loadCompare() {
+  const self = state;
+  let parent;
+  try {
+    parent = await api(`/api/simulations/${self.input.parentId}`);
+  } catch {
+    return $("compare")?.replaceChildren(h("p", { class: "muted" }, "The original simulation is no longer available."));
+  }
+  if (state !== self || !$("compare")) return;
+  const delta = (a, b, unit = "") => {
+    const d = Math.round(b - a);
+    return h("span", { class: `delta ${d > 0 ? "up" : d < 0 ? "down" : ""}` }, `${d > 0 ? "+" : ""}${d}${unit}`);
+  };
+  const before = new Map(parent.personas.map((p) => [p.id, p]));
+  const flips = self.personas.filter((p) => before.has(p.id) && before.get(p.id).stance !== p.stance);
+  const cell = (label, sim, cur) => h("div", { class: "num" },
+    h("b", {}, sim.report ? sim.report.intentScore : "–", cur && parent.report ? delta(parent.report.intentScore, sim.report.intentScore) : null),
+    h("span", {}, label),
+    h("small", {}, `${share(sim, "yes")}% would buy`, cur ? delta(share(parent, "yes"), share(sim, "yes"), " pts") : null));
+  $("compare").replaceChildren(
+    h("h3", { class: "section-title" }, "Compared with the original"),
+    h("div", { class: "compare-grid" },
+      h("a", { href: `#/sim/${parent.id}`, class: "plain" }, cell(`Original: ${parent.brief?.title ?? "idea"}`, parent, false)),
+      cell("This variant", self, true)),
+    h("h3", { class: "mini-title" }, flips.length ? `${flips.length} of ${self.personas.length} people changed their answer` : "Nobody changed their final answer"),
+    h("ul", { class: "flips" }, flips.map((p) => h("li", {}, avatar(p, "", () => openInterview(p.id)), h("b", {}, p.name), badge(before.get(p.id).stance), "→", badge(p.stance)))),
+  );
+}
+
+
+function setVariant(v) {
+  variantOf = v;
+  $("variant-banner").hidden = !v;
+  $("count").disabled = !!v;
+  if (v) {
+    $("variant-text").textContent = `Testing a variant on the same ${v.people} people from “${v.title}”. Edit the idea below (price, positioning, features) and run it again.`;
+    $("idea").value = v.idea;
+    $("audience").value = v.audience;
+    $("count").value = v.people;
+  }
+  updateEstimate();
+}
+$("variant-cancel").addEventListener("click", () => setVariant(null));
+
+function startVariant() {
+  const v = { id: state.id, title: state.brief?.title ?? "your idea", people: state.personas.length, idea: state.input.idea, audience: state.input.audience };
+  location.hash = "#/";
+  setVariant(v);
+  $("idea").focus();
 }
 
 function download() {

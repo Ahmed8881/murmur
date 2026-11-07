@@ -28,6 +28,9 @@ const text = (p: any) => {
     out = { action: "post", replyTo: "", content: "I would buy it", likes: ["post_launch"], stance: "yes", sentiment: 0.5, thought: "liked it" };
   } else if (t.includes("Write the report")) {
     out = { verdict: "ok", intentScore: 140, summary: "s", segments: [{ name: "A", reaction: "r", buyRate: 50 }], objections: [], praise: [], holes: [], recommendations: [], mindChanges: [] };
+  } else if (t.includes("gut reaction on first seeing")) {
+    const ids = [...t.matchAll(/\[(p_[\w-]+)\]/g)].map((m) => m[1]);
+    out = { reactions: ids.slice(1).map((id) => ({ id, stance: "no", sentiment: -2 })) }; // first person deliberately missing
   } else if (t.includes("A researcher asks you")) {
     out = { answer: "About $5." };
   } else throw new Error("unexpected prompt: " + t.slice(0, 80));
@@ -86,4 +89,20 @@ test("pollCrowd asks everyone and stores the poll", async () => {
   assert.equal(poll.answers.length, 5);
   assert.equal(sim.polls!.length, 1);
   assert.equal(sim.usage!.calls, before + 5);
+});
+
+test("variant run reuses the same people with fresh memory and new first impressions", async () => {
+  onTurn = () => {};
+  const original = newSim();
+  await runSimulation(original, input, () => {}, new AbortController().signal);
+  const calls0 = calls;
+  const variant = newSim();
+  await runSimulation(variant, { ...input, idea: "a cheaper widget idea", crowd: original.personas }, () => {}, new AbortController().signal);
+  assert.equal(variant.stage, "done", variant.error ?? "");
+  assert.deepEqual(variant.personas.map((p) => p.id), original.personas.map((p) => p.id));
+  assert.equal(variant.personas[0].initialStance, "maybe"); // missing reaction falls back
+  assert.equal(variant.personas[1].initialStance, "no");
+  assert.equal(variant.personas[1].sentiment >= -1, true);
+  assert.ok(original.personas[0].memory.length > 0, "original keeps its memory");
+  assert.equal(calls - calls0, 1 + 1 + 5 * 2 + 1); // brief + impressions + turns + report
 });

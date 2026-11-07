@@ -35,6 +35,10 @@
       </div>
 
       <form id="new-form" class="card compose" novalidate>
+        <div id="variant-banner" class="variant-banner" role="status" hidden>
+          <span id="variant-text"></span>
+          <button id="variant-cancel" type="button" class="link">Use a new crowd instead</button>
+        </div>
         <label class="field">
           <span class="label">Your idea or pitch</span>
           <textarea id="idea" rows="7" maxlength="20000" placeholder="e.g. A $9/month app that turns your fridge photos into a week of dinner plans and a grocery list, for busy parents."></textarea>
