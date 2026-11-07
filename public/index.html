@@ -109,6 +109,7 @@
             <button role="tab" data-tab="feed" aria-selected="true">Feed <span id="feed-count" class="pill"></span></button>
             <button role="tab" data-tab="people" aria-selected="false">People</button>
             <button role="tab" data-tab="report" aria-selected="false">Report <span id="report-dot" class="dot" hidden></span></button>
+            <button role="tab" data-tab="ask" aria-selected="false">Ask the crowd</button>
           </div>
 
           <div id="tab-feed" class="tab-panel" role="tabpanel">
@@ -125,6 +126,18 @@
           </div>
           <div id="tab-report" class="tab-panel" role="tabpanel" hidden>
             <div id="report"></div>
+          </div>
+          <div id="tab-ask" class="tab-panel" role="tabpanel" hidden>
+            <form id="poll-form" class="card poll-form">
+              <label for="poll-q" class="label">Ask everyone the same question</label>
+              <div class="poll-row">
+                <input id="poll-q" type="text" maxlength="500" placeholder="e.g. What's the most you'd pay per month?" />
+                <button id="poll-run" class="btn primary" type="submit">Ask</button>
+              </div>
+              <div id="poll-suggest" class="filters"></div>
+              <p id="poll-note" class="hint"></p>
+            </form>
+            <div id="polls" class="polls"></div>
           </div>
         </div>
       </div>

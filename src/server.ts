@@ -4,7 +4,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { MODEL } from "./claude.ts";
-import { interview, runSimulation } from "./engine.ts";
+import { interview, pollCrowd, runSimulation } from "./engine.ts";
 import type { SimEvent, Simulation } from "./types.ts";
 import { newId } from "./util.ts";
 
@@ -149,6 +149,24 @@ app.post("/api/simulations/:id/personas/:pid/interview", async (req, res) => {
     res.json({ reply, usage: sim.usage });
   } catch (err) {
     console.error("[murmur] interview failed:", err);
+    bad(res, 502, (err as Error).message);
+  }
+});
+
+const PollZ = z.object({ question: z.string().trim().min(3).max(500) });
+
+app.post("/api/simulations/:id/polls", async (req, res) => {
+  const sim = sims.get(req.params.id);
+  if (!sim || !sim.brief || !sim.personas.length) return bad(res, 404, "Simulation not found.");
+  if (sim.stage !== "done" && sim.stage !== "error") return bad(res, 409, "Wait for the simulation to finish first.");
+  const parsed = PollZ.safeParse(req.body);
+  if (!parsed.success) return bad(res, 400, parsed.error.issues[0].message);
+  try {
+    const poll = await pollCrowd(sim, parsed.data.question);
+    save(sim);
+    res.json({ poll, usage: sim.usage });
+  } catch (err) {
+    console.error("[murmur] poll failed:", err);
     bad(res, 502, (err as Error).message);
   }
 });

@@ -216,6 +216,7 @@ function render() {
   if (tab === "feed") renderFeed();
   if (tab === "people") renderPeople();
   if (tab === "report") renderReport();
+  if (tab === "ask") renderPolls();
   $("feed-count").textContent = Math.max(0, s.posts.length - 1) || "";
   $("report-dot").hidden = !s.report || tab === "report";
 }
@@ -396,7 +397,7 @@ for (const b of document.querySelectorAll("[role=tab]")) {
   b.addEventListener("click", () => {
     tab = b.dataset.tab;
     for (const t of document.querySelectorAll("[role=tab]")) t.setAttribute("aria-selected", t === b);
-    for (const k of ["feed", "people", "report"]) $(`tab-${k}`).hidden = k !== tab;
+    for (const k of ["feed", "people", "report", "ask"]) $(`tab-${k}`).hidden = k !== tab;
     if (state) render();
   });
 }
@@ -407,6 +408,53 @@ for (const c of document.querySelectorAll("[data-filter]")) {
     if (state) renderFeed();
   });
 }
+
+/* ---------------- Ask the crowd ---------------- */
+
+const POLL_SUGGEST = ["What's the most you'd pay per month?", "What would make you switch from what you use now?", "Where would you expect to hear about this?", "What one feature would make it a must-have?"];
+let polling = false;
+
+function renderPolls() {
+  const ready = state.stage === "done" || state.stage === "error";
+  $("poll-run").disabled = polling || !ready || !state.personas.length;
+  $("poll-q").disabled = !ready;
+  $("poll-note").textContent = !ready ? "Available once the simulation finishes."
+    : polling ? `Asking ${state.personas.length} people…`
+    : `Costs about ${state.personas.length} Claude calls.`;
+  $("poll-suggest").replaceChildren(...POLL_SUGGEST.map((q) => h("button", { class: "chip", type: "button", disabled: !ready, onclick: () => ($("poll-q").value = q) }, q)));
+  const polls = [...(state.polls ?? [])].reverse();
+  $("polls").replaceChildren(...polls.map((poll) => {
+    const col = (stance) => {
+      const rows = poll.answers.filter((a) => byId(a.personaId)?.stance === stance);
+      return h("div", { class: "poll-col" }, h("h4", {}, badge(stance), h("span", { class: "freq" }, rows.length)),
+        h("ul", {}, rows.map((a) => {
+          const p = byId(a.personaId);
+          return h("li", {}, avatar(p, "", () => openInterview(p.id)), h("span", {}, h("b", {}, p.name.split(" ")[0]), " ", a.answer));
+        })));
+    };
+    return h("article", { class: "card poll" }, h("h3", {}, poll.question), h("div", { class: "poll-cols" }, col("yes"), col("maybe"), col("no")));
+  }));
+}
+
+$("poll-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const question = $("poll-q").value.trim();
+  if (question.length < 3 || polling) return;
+  polling = true;
+  renderPolls();
+  try {
+    const { poll, usage } = await api(`/api/simulations/${state.id}/polls`, { question });
+    (state.polls ??= []).push(poll);
+    state.usage = usage;
+    $("poll-q").value = "";
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    polling = false;
+    renderPolls();
+    renderUsage();
+  }
+});
 
 /* ---------------- Interview ---------------- */
 
