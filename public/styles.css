@@ -329,3 +329,4 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 a.plain { color: inherit; text-decoration: none; }
+.pill:empty { display: none; }
