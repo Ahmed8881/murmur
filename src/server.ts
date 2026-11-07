@@ -71,7 +71,7 @@ app.get("/api/simulations", (_req, res) => {
   res.json(
     [...sims.values()]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map((s) => ({ id: s.id, createdAt: s.createdAt, stage: s.stage, title: s.brief?.title ?? s.input.idea.slice(0, 60), people: s.personas.length, score: s.report?.intentScore ?? null })),
+      .map((s) => ({ id: s.id, createdAt: s.createdAt, stage: s.stage, title: s.brief?.title ?? s.input.idea.slice(0, 60), people: s.personas.length, score: s.report?.intentScore ?? null, costUsd: s.usage?.costUsd ?? null })),
   );
 });
 
@@ -131,7 +131,9 @@ app.post("/api/simulations/:id/personas/:pid/interview", async (req, res) => {
   const parsed = InterviewZ.safeParse(req.body);
   if (!parsed.success) return bad(res, 400, parsed.error.issues[0].message);
   try {
-    res.json({ reply: await interview(sim, persona, parsed.data.messages) });
+    const reply = await interview(sim, persona, parsed.data.messages);
+    if (sim.stage === "done" || sim.stage === "error") save(sim);
+    res.json({ reply, usage: sim.usage });
   } catch (err) {
     console.error("[murmur] interview failed:", err);
     bad(res, 502, (err as Error).message);
