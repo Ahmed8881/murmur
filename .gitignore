@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+*.log
+
+# Secrets: never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
