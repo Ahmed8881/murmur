@@ -18,4 +18,7 @@ Murmur simulates a crowd of AI personas reacting to a startup idea on a fake soc
 ## Commands
 - `npm run dev`: start with reload at http://127.0.0.1:3000
 - `npm run typecheck` / `npm test`: must pass before opening a PR (CI runs both)
+- `test/engine.test.ts` runs the whole pipeline offline with a fake Claude client; extend its fake when you add a prompt.
+- `main` is protected: work on a branch and open a PR.
+- Don't add AI co-author trailers or "Generated with" lines to commits or PRs.
 - New contributors: run `/setup`.

@@ -20,6 +20,14 @@ Paste an idea or upload a pitch deck. Murmur:
 4. **Writes a report:** purchase intent, objections with verbatim quotes, holes in the idea, what to change, and who changed their mind and why.
 5. **Lets you interview anyone.** Pull any persona aside and ask why they would or wouldn't buy.
 
+Then go further:
+
+- **Ask the crowd.** Put one question to everyone ("what's the most you'd pay?") and see the answers grouped by who would buy.
+- **Test a variant on the same crowd.** Change the price or positioning and rerun it on the exact same people. The report shows the score change and who changed their mind.
+- **Finish early.** Seen enough? Stop the remaining turns and get the report from the discussion so far.
+- **See what it costs.** A live meter shows calls, tokens and estimated dollars for every run.
+- **Export.** Download the report as Markdown for Notion, Slack or docs, or the raw run as JSON.
+
 <img src="docs/report.png" alt="Murmur report with intent score, objections and segment breakdown" width="900" />
 
 > **A simulation, not real customers.** Murmur is useful for finding the holes in an idea before real people do. It doesn't replace talking to real users.
