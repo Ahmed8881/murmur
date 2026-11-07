@@ -243,7 +243,7 @@ function renderPulse() {
   renderUsage();
 }
 
-const fmtUsd = (n) => (n == null ? "–" : n < 0.01 ? "<$0.01" : `${n.toFixed(2)}`);
+const fmtUsd = (n) => (n == null ? "–" : n < 0.01 ? "<$0.01" : "$" + n.toFixed(2));
 const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 
 function renderUsage() {
@@ -376,6 +376,7 @@ function renderReport() {
     h("div", { class: "report-actions" },
       h("button", { class: "btn primary", onclick: () => openInterview(state.personas.find((p) => p.stance === "no")?.id || state.personas[0].id) }, "Interview a skeptic"),
       h("button", { class: "btn ghost", onclick: startVariant, title: "Change the idea or price and rerun it on these same people" }, "Test a variant on this crowd"),
+      h("button", { class: "btn ghost", onclick: downloadMarkdown }, "Download report (.md)"),
       h("button", { class: "btn ghost", onclick: download }, "Download JSON"),
       h("a", { class: "btn ghost", href: "#/" }, "New simulation")),
   ));
@@ -435,11 +436,42 @@ function startVariant() {
   $("idea").focus();
 }
 
-function download() {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }));
-  h("a", { href: url, download: `murmur-${state.id}.json` }).click();
+function saveFile(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  h("a", { href: url, download: name }).click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+const download = () => saveFile(`murmur-${state.id}.json`, JSON.stringify(state, null, 2), "application/json");
+
+// One line per item, so model text can't break the document structure with stray newlines.
+const md1 = (s) => String(s).replace(/\s*\n\s*/g, " ").trim();
+
+function toMarkdown(s) {
+  const r = s.report, c = counts();
+  const list = (items) => items.map((x) => `- ${md1(x)}`).join("\n");
+  const quoted = (items) => items.map((o) => `- **${md1(o.point)}** _(${o.frequency})_${o.quote ? `\n  > ${md1(o.quote)}` : ""}`).join("\n");
+  const out = [
+    `# ${md1(s.brief?.title ?? "Murmur simulation")}`,
+    `_Simulated with Murmur on ${new Date(s.createdAt).toLocaleDateString()}: ${s.personas.length} AI people, ${s.input.rounds} rounds. A simulation, not real customer data._`,
+    `## Verdict: ${r.intentScore}/100 purchase intent`,
+    `**${md1(r.verdict)}**\n\n${md1(r.summary)}`,
+    `${c.yes} would buy · ${c.maybe} maybe · ${c.no} wouldn't`,
+    `## By segment\n\n| Segment | Would buy | Reaction |\n|---|---|---|\n${r.segments.map((x) => `| ${md1(x.name).replace(/\|/g, "/")} | ${Math.round(x.buyRate)}% | ${md1(x.reaction).replace(/\|/g, "/")} |`).join("\n")}`,
+    `## Why they'd pass\n\n${quoted(r.objections)}`,
+    `## What landed\n\n${quoted(r.praise)}`,
+    `## Holes in the idea\n\n${list(r.holes)}`,
+    `## What to change\n\n${r.recommendations.map((x, i) => `${i + 1}. ${md1(x)}`).join("\n")}`,
+  ];
+  if (r.mindChanges.length) out.push(`## Who changed their mind\n\n${list(r.mindChanges.map((m) => `**${m.name}**: ${STANCE_LABEL[m.from]} → ${STANCE_LABEL[m.to]}. ${m.why}`))}`);
+  for (const poll of s.polls ?? []) {
+    out.push(`## Asked the crowd: “${md1(poll.question)}”\n\n${list(poll.answers.map((a) => { const p = byId(a.personaId); return `**${p?.name ?? "?"}** (${STANCE_LABEL[p?.stance] ?? "?"}): ${a.answer}`; }))}`);
+  }
+  out.push(`## The product brief\n\n${md1(s.brief?.summary ?? "")}\n\n- Pricing: ${md1(s.brief?.pricing ?? "")}\n- Target customers: ${md1(s.brief?.targetCustomers ?? "")}`);
+  return out.join("\n\n") + "\n";
+}
+
+const downloadMarkdown = () => saveFile(`murmur-${(state.brief?.title ?? state.id).replace(/[^\w-]+/g, "-").toLowerCase()}.md`, toMarkdown(state), "text/markdown");
 
 $("finish").addEventListener("click", async () => {
   const btn = $("finish");
