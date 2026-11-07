@@ -56,6 +56,16 @@ export interface Report {
   mindChanges: { name: string; from: Stance; to: Stance; why: string }[];
 }
 
+export interface Usage {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** null once any call ran on a model we have no price for. */
+  costUsd: number | null;
+}
+
 export interface SimInput {
   idea: string;
   audience: string;
@@ -76,6 +86,7 @@ export interface Simulation {
   history: ({ round: number } & StanceCount)[];
   report: Report | null;
   error: string | null;
+  usage?: Usage; // absent on runs saved before usage tracking
 }
 
 export type SimEvent =
@@ -87,4 +98,5 @@ export type SimEvent =
   | { type: "persona"; persona: Persona }
   | { type: "history"; history: Simulation["history"] }
   | { type: "report"; report: Report }
+  | { type: "usage"; usage: Usage }
   | { type: "error"; error: string };

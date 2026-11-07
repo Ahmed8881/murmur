@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allocate, chunk, clamp, countStances, mapLimit } from "../src/util.ts";
+import { addUsage, allocate, chunk, clamp, countStances, emptyUsage, mapLimit } from "../src/util.ts";
 
 test("allocate sums to total and respects weights", () => {
   assert.deepEqual(allocate(10, [50, 30, 20]), [5, 3, 2]);
@@ -25,4 +25,14 @@ test("chunk, clamp, countStances", () => {
   assert.equal(clamp(5, -1, 1), 1);
   assert.equal(clamp(NaN, -1, 1), 0);
   assert.deepEqual(countStances([{ stance: "yes" }, { stance: "no" }, { stance: "yes" }]), { yes: 2, maybe: 0, no: 1 });
+});
+
+test("addUsage prices by model and goes null for unknown models", () => {
+  const u = emptyUsage();
+  addUsage(u, "claude-opus-5-5", { input_tokens: 1_000_000, output_tokens: 100_000, cache_read_input_tokens: 1_000_000 });
+  assert.equal(u.calls, 1);
+  assert.ok(Math.abs(u.costUsd! - (4 + 2 + 0.4)) < 1e-9);
+  addUsage(u, "some-future-model", { input_tokens: 10, output_tokens: 10 });
+  assert.equal(u.costUsd, null);
+  assert.equal(u.inputTokens, 1_000_010);
 });

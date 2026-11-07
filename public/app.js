@@ -144,7 +144,7 @@ async function loadHistory() {
         ? sims.map((s) =>
             h("li", {}, h("a", { href: `#/sim/${s.id}` },
               h("span", {}, s.title || "Untitled"),
-              h("span", { class: "meta" }, `${s.people} people · ${s.score != null ? `${s.score}/100` : s.stage} · ${new Date(s.createdAt).toLocaleDateString()}`))))
+              h("span", { class: "meta" }, `${s.people} people · ${s.score != null ? `${s.score}/100` : s.stage}${s.costUsd != null ? ` · ${fmtUsd(s.costUsd)}` : ""} · ${new Date(s.createdAt).toLocaleDateString()}`))))
         : [h("li", { class: "history-empty" }, "Nothing yet. Your simulations will show up here.")]),
     );
   } catch {
@@ -182,6 +182,7 @@ function apply(e) {
     case "like": state.posts.find((p) => p.id === e.postId)?.likes.push(e.personaId); break;
     case "history": state.history = e.history; break;
     case "report": state.report = e.report; break;
+    case "usage": state.usage = e.usage; break;
     case "error": state.error = e.error; break;
   }
   if (["done", "error"].includes(state.stage)) source?.close();
@@ -228,6 +229,19 @@ function renderPulse() {
   renderChart();
   $("crowd").replaceChildren(...state.personas.map((p) => avatar(p, "", () => openInterview(p.id))));
   if (!state.personas.length) $("crowd").replaceChildren(h("p", { class: "muted" }, "Assembling the crowd…"));
+  renderUsage();
+}
+
+const fmtUsd = (n) => (n == null ? "–" : n < 0.01 ? "<$0.01" : `${n.toFixed(2)}`);
+const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+
+function renderUsage() {
+  const u = state.usage;
+  const row = (k, v, cls) => [h("dt", {}, k), h("dd", { class: cls }, v)];
+  $("usage").replaceChildren(...(u
+    ? [...row("Cost", fmtUsd(u.costUsd), "cost"), ...row("Calls", u.calls), ...row("Tokens in", fmtTok(u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens)), ...row("Tokens out", fmtTok(u.outputTokens))]
+    : [h("dd", { class: "muted" }, "Not recorded for this run.")]));
+  $("usage").title = u?.costUsd == null && u ? "Cost unknown for this model; token counts are exact." : "Estimated from token counts at list prices.";
 }
 
 function renderChart() {
@@ -424,8 +438,9 @@ async function ask(text) {
   log.append(typing);
   log.scrollTop = log.scrollHeight;
   try {
-    const { reply } = await api(`/api/simulations/${state.id}/personas/${session.personaId}/interview`, { messages: session.messages });
+    const { reply, usage } = await api(`/api/simulations/${state.id}/personas/${session.personaId}/interview`, { messages: session.messages });
     session.messages.push({ role: "assistant", content: reply });
+    if (usage) (state.usage = usage), renderUsage();
     typing.replaceWith(h("li", { class: "msg assistant" }, reply));
   } catch (err) {
     session.messages.pop();

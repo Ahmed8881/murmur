@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type Anthropic from "@anthropic-ai/sdk";
-import { ask, chat } from "./claude.ts";
+import { ask, chat, type RunCtx } from "./claude.ts";
 import type { Brief, Persona, Post, Report, SimEvent, SimInput, Simulation } from "./types.ts";
-import { allocate, chunk, clamp, countStances, mapLimit, newId } from "./util.ts";
+import { allocate, chunk, clamp, countStances, emptyUsage, mapLimit, newId } from "./util.ts";
 
 const CONCURRENCY = 6; // parallel Claude calls; also the size of each "wave" within a round
 const FEED_WINDOW = 30; // most recent posts a persona sees
@@ -78,7 +78,7 @@ function feedText(sim: Simulation) {
     .join("\n");
 }
 
-async function makeBrief(input: SimInput): Promise<Brief> {
+async function makeBrief(input: SimInput, ctx: RunCtx): Promise<Brief> {
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (input.deck) content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: input.deck.data } });
   content.push({
@@ -88,12 +88,12 @@ ${input.audience ? `The founder says the intended audience is: ${input.audience}
 IDEA:
 ${input.idea || "(see deck)"}`,
   });
-  const b = await ask({ system: "You are a sharp, neutral market analyst.", content, schema: BriefZ, effort: "medium" });
+  const b = await ask({ system: "You are a sharp, neutral market analyst.", content, schema: BriefZ, effort: "medium", ctx });
   if (!b.segments.length) b.segments = [{ name: "General public", description: "Broad audience", share: 1 }];
   return b;
 }
 
-async function makePersonas(brief: Brief, count: number): Promise<Persona[]> {
+async function makePersonas(brief: Brief, count: number, ctx: RunCtx): Promise<Persona[]> {
   // Batches of ≤8 per call, each pinned to one segment, so people stay distinct and the crowd mirrors the segment mix.
   const counts = allocate(count, brief.segments.map((s) => s.share));
   const jobs = brief.segments.flatMap((segment, i) => chunk(Array.from({ length: counts[i] }), 8).map((c) => ({ segment, n: c.length })));
@@ -106,6 +106,7 @@ Create exactly ${n} distinct people from the segment "${segment.name}" (${segmen
 Vary age, gender, income, geography, temperament and tech comfort. Include at least one skeptic when n > 2.
 Use realistic, culturally varied names.`,
       schema: PersonasZ,
+      ctx,
     });
     return personas.slice(0, n).map(
       (p): Persona => ({ ...p, id: newId("p"), segment: segment.name, initialStance: p.stance, sentiment: clamp(p.sentiment, -1, 1), memory: [] }),
@@ -114,7 +115,7 @@ Use realistic, culturally varied names.`,
   return batches.flat();
 }
 
-async function takeTurn(sim: Simulation, p: Persona, round: number, totalRounds: number) {
+async function takeTurn(sim: Simulation, p: Persona, round: number, totalRounds: number, ctx: RunCtx) {
   return ask({
     system: `${WORLD}\n\n${personaText(p)}`,
     content: `${briefText(sim.brief!)}
@@ -128,10 +129,11 @@ ${feedText(sim)}
 Decide what you do now. Post your own take, reply to someone you agree or disagree with, or lurk.
 Change your stance only if something in the feed genuinely moved you. Stay in character.`,
     schema: TurnZ,
+    ctx,
   });
 }
 
-async function makeReport(sim: Simulation): Promise<Report> {
+async function makeReport(sim: Simulation, ctx: RunCtx): Promise<Report> {
   const people = sim.personas
     .map((p) => `- ${p.name} (${p.segment}, ${p.occupation}, budget ${p.budget}): ${p.initialStance} -> ${p.stance}. Notes: ${p.memory.join(" | ")}`)
     .join("\n");
@@ -152,6 +154,7 @@ ${posts}
 Write the report. Quotes must be copied verbatim from posts.`,
     schema: ReportZ,
     effort: "medium",
+    ctx,
   });
   return { ...r, intentScore: clamp(r.intentScore, 0, 100), segments: r.segments.map((s) => ({ ...s, buyRate: clamp(s.buyRate, 0, 100) })) };
 }
@@ -161,13 +164,15 @@ export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: 
     sim.stage = s;
     emit({ type: "stage", stage: s, round: sim.round });
   };
+  sim.usage = emptyUsage();
+  const ctx: RunCtx = { usage: sim.usage, onUsage: () => emit({ type: "usage", usage: sim.usage! }) };
   try {
     stage("brief");
-    sim.brief = await makeBrief(input);
+    sim.brief = await makeBrief(input, ctx);
     emit({ type: "brief", brief: sim.brief });
 
     stage("personas");
-    sim.personas = await makePersonas(sim.brief, input.personaCount);
+    sim.personas = await makePersonas(sim.brief, input.personaCount, ctx);
     if (!sim.personas.length) throw new Error("No personas were generated.");
     emit({ type: "personas", personas: sim.personas });
     sim.history.push({ round: 0, ...countStances(sim.personas) });
@@ -187,7 +192,7 @@ export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: 
           wave.map(async (p) => {
             let t;
             try {
-              t = await takeTurn(sim, p, round, input.rounds);
+              t = await takeTurn(sim, p, round, input.rounds, ctx);
             } catch (err) {
               console.warn(`[murmur] ${p.name} skipped round ${round}:`, (err as Error).message);
               return; // one failed persona shouldn't sink the whole run
@@ -217,7 +222,7 @@ export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: 
     }
 
     stage("report");
-    sim.report = await makeReport(sim);
+    sim.report = await makeReport(sim, ctx);
     emit({ type: "report", report: sim.report });
     stage("done");
   } catch (err) {
@@ -241,5 +246,6 @@ ${briefText(sim.brief!)}
 
 The founder is now interviewing you one-on-one. Answer in character, conversationally and candidly, in 1-3 short paragraphs.
 Explain your real reasons, including what would change your mind. Never break character or mention being an AI simulation.`;
-  return chat(system, messages);
+  sim.usage ??= emptyUsage();
+  return chat(system, messages, { usage: sim.usage });
 }
