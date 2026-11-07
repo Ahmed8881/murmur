@@ -207,6 +207,11 @@ function render() {
   $("stepper").replaceChildren(...STEPS.map(([k, label], i) =>
     h("li", { class: s.stage === "done" || i < at ? "done" : i === at ? "active" : "", "aria-current": i === at ? "step" : null }, label)));
 
+  const fin = $("finish");
+  fin.hidden = !["queued", "brief", "personas", "simulating"].includes(s.stage);
+  fin.textContent = s.stage === "simulating" ? "Finish early & report" : "Stop";
+  fin.title = s.stage === "simulating" ? "Skip the remaining turns and write the report from the discussion so far" : "Stop this run";
+
   renderPulse();
   if (tab === "feed") renderFeed();
   if (tab === "people") renderPeople();
@@ -373,6 +378,19 @@ function download() {
   h("a", { href: url, download: `murmur-${state.id}.json` }).click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+$("finish").addEventListener("click", async () => {
+  const btn = $("finish");
+  btn.disabled = true;
+  btn.textContent = "Wrapping up…";
+  try {
+    await api(`/api/simulations/${state.id}/finish`, {});
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 for (const b of document.querySelectorAll("[role=tab]")) {
   b.addEventListener("click", () => {

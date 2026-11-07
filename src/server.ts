@@ -16,6 +16,7 @@ const DATA_DIR = fileURLToPath(new URL("../data/", import.meta.url));
 
 const sims = new Map<string, Simulation>();
 const listeners = new Map<string, Set<express.Response>>();
+const running = new Map<string, AbortController>();
 
 mkdirSync(DATA_DIR, { recursive: true });
 for (const f of readdirSync(DATA_DIR).filter((f) => f.endsWith(".json"))) {
@@ -98,15 +99,27 @@ app.post("/api/simulations", (req, res) => {
   sims.set(sim.id, sim);
   const emit = (e: SimEvent) => {
     for (const r of listeners.get(sim.id) ?? []) r.write(`data: ${JSON.stringify(e)}\n\n`);
-    if (e.type === "stage" && (e.stage === "done" || e.stage === "error")) save(sim);
+    if (e.type === "stage" && (e.stage === "done" || e.stage === "error")) {
+      running.delete(sim.id);
+      save(sim);
+    }
   };
-  runSimulation(sim, parsed.data, emit);
+  const ctrl = new AbortController();
+  running.set(sim.id, ctrl);
+  runSimulation(sim, parsed.data, emit, ctrl.signal);
   res.status(201).json({ id: sim.id });
 });
 
 app.get("/api/simulations/:id", (req, res) => {
   const sim = sims.get(req.params.id);
   sim ? res.json(sim) : bad(res, 404, "Simulation not found.");
+});
+
+app.post("/api/simulations/:id/finish", (req, res) => {
+  const ctrl = running.get(req.params.id);
+  if (!ctrl) return bad(res, 409, "This simulation is not running.");
+  ctrl.abort();
+  res.status(202).json({ ok: true });
 });
 
 app.get("/api/simulations/:id/events", (req, res) => {
