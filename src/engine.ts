@@ -159,13 +159,14 @@ Write the report. Quotes must be copied verbatim from posts.`,
   return { ...r, intentScore: clamp(r.intentScore, 0, 100), segments: r.segments.map((s) => ({ ...s, buyRate: clamp(s.buyRate, 0, 100) })) };
 }
 
-export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: SimEvent) => void) {
+/** `signal` = "finish early": before the discussion it stops the run; during it, remaining turns are dropped and the report is written from what exists. */
+export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: SimEvent) => void, signal: AbortSignal) {
   const stage = (s: Simulation["stage"]) => {
     sim.stage = s;
     emit({ type: "stage", stage: s, round: sim.round });
   };
   sim.usage = emptyUsage();
-  const ctx: RunCtx = { usage: sim.usage, onUsage: () => emit({ type: "usage", usage: sim.usage! }) };
+  const ctx: RunCtx = { usage: sim.usage, signal, onUsage: () => emit({ type: "usage", usage: sim.usage! }) };
   try {
     stage("brief");
     sim.brief = await makeBrief(input, ctx);
@@ -182,18 +183,20 @@ export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: 
     sim.posts.push(launch);
     emit({ type: "post", post: launch });
 
-    for (let round = 1; round <= input.rounds; round++) {
+    for (let round = 1; round <= input.rounds && !signal.aborted; round++) {
       sim.round = round;
       stage("simulating");
       // Shuffled waves: later waves see and react to what earlier waves posted this round.
       const order = [...sim.personas].sort(() => Math.random() - 0.5);
       for (const wave of chunk(order, CONCURRENCY)) {
+        if (signal.aborted) break;
         await Promise.all(
           wave.map(async (p) => {
             let t;
             try {
               t = await takeTurn(sim, p, round, input.rounds, ctx);
             } catch (err) {
+              if (signal.aborted) return;
               console.warn(`[murmur] ${p.name} skipped round ${round}:`, (err as Error).message);
               return; // one failed persona shouldn't sink the whole run
             }
@@ -221,12 +224,13 @@ export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: 
       emit({ type: "history", history: sim.history });
     }
 
+    if (sim.posts.length < 2) throw new Error("Stopped before anyone posted, so there is nothing to report.");
     stage("report");
-    sim.report = await makeReport(sim, ctx);
+    sim.report = await makeReport(sim, { ...ctx, signal: undefined }); // finishing early must still produce the report
     emit({ type: "report", report: sim.report });
     stage("done");
   } catch (err) {
-    sim.error = (err as Error).message;
+    sim.error = signal.aborted && sim.stage !== "report" && !(err as Error).message.startsWith("Stopped") ? "Stopped by you." : (err as Error).message;
     emit({ type: "error", error: sim.error });
     stage("error");
   }
