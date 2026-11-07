@@ -115,6 +115,31 @@ Use realistic, culturally varied names.`,
   return batches.flat();
 }
 
+const ImpressionsZ = z.object({
+  reactions: z.array(z.object({ id: z.string(), stance: StanceZ, sentiment: z.number().describe("-1 to 1") })),
+});
+
+/** Same people, fresh minds: keep ids and profiles, wipe memory, and get a new gut reaction to this idea in one call. */
+async function reuseCrowd(brief: Brief, crowd: Persona[], ctx: RunCtx): Promise<Persona[]> {
+  const { reactions } = await ask({
+    system: WORLD,
+    content: `${briefText(brief)}
+
+For each person below, give their honest gut reaction on first seeing this product: would they buy it?
+${crowd.map((p) => `- [${p.id}] ${p.name}, ${p.age}, ${p.occupation} in ${p.location}. ${p.bio} Cares about: ${p.values.join(", ")}. Budget: ${p.budget}.`).join("\n")}
+
+Return one reaction per id.`,
+    schema: ImpressionsZ,
+    ctx,
+  });
+  const byId = new Map(reactions.map((r) => [r.id, r]));
+  return crowd.map((p) => {
+    const r = byId.get(p.id);
+    const stance = r?.stance ?? "maybe";
+    return { ...p, values: [...p.values], memory: [], stance, initialStance: stance, sentiment: clamp(r?.sentiment ?? 0, -1, 1) };
+  });
+}
+
 async function takeTurn(sim: Simulation, p: Persona, round: number, totalRounds: number, ctx: RunCtx) {
   return ask({
     system: `${WORLD}\n\n${personaText(p)}`,
@@ -173,7 +198,7 @@ export async function runSimulation(sim: Simulation, input: SimInput, emit: (e: 
     emit({ type: "brief", brief: sim.brief });
 
     stage("personas");
-    sim.personas = await makePersonas(sim.brief, input.personaCount, ctx);
+    sim.personas = input.crowd?.length ? await reuseCrowd(sim.brief, input.crowd, ctx) : await makePersonas(sim.brief, input.personaCount, ctx);
     if (!sim.personas.length) throw new Error("No personas were generated.");
     emit({ type: "personas", personas: sim.personas });
     sim.history.push({ round: 0, ...countStances(sim.personas) });

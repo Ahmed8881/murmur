@@ -262,6 +262,17 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .seg .pct { font: 12px var(--mono); text-align: right; }
 .report-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* Variants */
+.variant-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 9%, transparent); font-size: 14px; }
+.compare { padding: 20px; }
+.compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.compare-grid .num a { color: inherit; }
+.compare-grid .num small { display: block; font: 12px var(--mono); color: var(--ink-3); margin-top: 6px; }
+.delta { font: 500 13px var(--mono); margin-left: 6px; }
+.delta.up { color: var(--yes); } .delta.down { color: var(--no); }
+.flips { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 14px; }
+.flips li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
 /* Ask the crowd */
 .poll-form { padding: 18px; display: grid; gap: 12px; margin-bottom: 18px; }
 .poll-row { display: flex; gap: 8px; }
@@ -317,3 +328,4 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+a.plain { color: inherit; text-decoration: none; }
