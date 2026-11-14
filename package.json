@@ -15,7 +15,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.6.0",
+    "@anthropic-ai/sdk": "^1.8.0",
     "express": "^5.3.0",
     "zod": "^4.6.7"
   },
